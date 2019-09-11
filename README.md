@@ -1,3 +1,9 @@
+---
+
+typora-copy-images-to: 图片
+typora-root-url: ./
+---
+
 # 一、暴力破解
 
 Burte Force（暴力破解）概述
@@ -16,19 +22,18 @@ Burte Force（暴力破解）概述
 
 a、提交数据
 
-![1568213840918](C:\Users\15950\AppData\Roaming\Typora\typora-user-images\1568213840918.png)
+![1568213840918](/图片/1568213840918.png)
 
 b、抓包进行爆破
 
-![1568215095203](C:\Users\15950\AppData\Roaming\Typora\typora-user-images\1568215095203.png)
+![1568215095203](/图片/1568215095203.png)
 
-![1568215114930](C:\Users\15950\AppData\Roaming\Typora\typora-user-images\1568215114930.png)
+![1568215114930](/图片/1568215114930.png)
 
 c、看响应数据包长度
 
-![1568215188316](C:\Users\15950\AppData\Roaming\Typora\typora-user-images\1568215188316.png)
+![1568215188316](/图片/1568215188316.png)
 
 d、爆出密码为123456
 
-![1568215234863](C:\Users\15950\AppData\Roaming\Typora\typora-user-images\1568215234863.png)
-
+![1568215234863](/图片/1568215234863.png)
